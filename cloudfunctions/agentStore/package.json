@@ -1,0 +1,9 @@
+{
+  "name": "agentStore",
+  "version": "1.0.0",
+  "description": "Persist agent conversations and chat records for the current openid",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~3.0.1"
+  }
+}

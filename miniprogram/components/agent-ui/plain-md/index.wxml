@@ -1,0 +1,3 @@
+<view class="plain-md">
+  <text wx:for="{{blocks}}" wx:for-item="block" wx:key="i" user-select="{{true}}" class="plain-md__{{block.type}}">{{block.text}}</text>
+</view>

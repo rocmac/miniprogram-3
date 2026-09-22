@@ -1,0 +1,33 @@
+{
+  "version": "2.0",
+  "envId": "kinder-d3gvjqy8y58003361",
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "functionRoot": "./cloudfunctions",
+  "functions": [
+    {
+      "name": "login",
+      "timeout": 15,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "installDependency": true,
+      "memorySize": 256,
+      "description": "小程序用户登录与资料记录"
+    },
+    {
+      "name": "agentStore",
+      "timeout": 15,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "installDependency": true,
+      "memorySize": 256,
+      "description": "会话和聊天记录落文档库"
+    }
+  ],
+  "databases": [
+    {
+      "collectionName": "users",
+      "description": "小程序用户登录信息",
+      "aclTag": "ADMINONLY"
+    }
+  ]
+}

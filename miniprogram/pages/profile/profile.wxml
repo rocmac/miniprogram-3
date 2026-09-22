@@ -1,0 +1,54 @@
+<view class="page">
+  <view class="card user-card">
+    <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+      <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" />
+      <view class="avatar-mask">换头像</view>
+    </button>
+    <view class="user-fields">
+      <text class="label">微信昵称</text>
+      <input
+        class="nickname"
+        type="nickname"
+        maxlength="20"
+        placeholder="点击填写微信昵称"
+        value="{{nickName}}"
+        bindblur="onNicknameBlur"
+        bindchange="onNicknameChange"
+      />
+      <text class="hint">头像和昵称需你点选授权后才会写入后台</text>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="row">
+      <text class="row-label">登录状态</text>
+      <text class="row-value {{userInfo.openid ? 'ok' : 'muted'}}">{{userInfo.openid ? '已识别微信身份' : '未记录'}}</text>
+    </view>
+    <view class="row">
+      <text class="row-label">OpenID</text>
+      <text class="row-value mono" selectable>{{maskedOpenid}}</text>
+    </view>
+    <view class="row" wx:if="{{userInfo.unionid}}">
+      <text class="row-label">UnionID</text>
+      <text class="row-value mono" selectable>{{maskedUnionid}}</text>
+    </view>
+    <view class="row">
+      <text class="row-label">登录次数</text>
+      <text class="row-value">{{userInfo.loginCount || 0}} 次</text>
+    </view>
+    <view class="row">
+      <text class="row-label">最近登录</text>
+      <text class="row-value">{{lastLoginText}}</text>
+    </view>
+    <view class="row">
+      <text class="row-label">首次记录</text>
+      <text class="row-value">{{createdAtText}}</text>
+    </view>
+    <view class="row">
+      <text class="row-label">设备</text>
+      <text class="row-value">{{deviceText}}</text>
+    </view>
+  </view>
+
+  <view class="footer-hint">后台可在云开发数据库 users 集合中查看完整记录。聊天功能不依赖完善资料。</view>
+</view>

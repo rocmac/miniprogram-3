@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# dependencies
+node_modules/
+miniprogram_npm/
+
+# WeChat DevTools local
+project.private.config.json
+
+# logs / temp
+*.log
+.temp/
+.idea/
+.vscode/

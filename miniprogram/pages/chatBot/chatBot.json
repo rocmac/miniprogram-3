@@ -1,0 +1,12 @@
+{
+  "usingComponents": {
+    "agent-ui": "/components/agent-ui/index"
+  },
+  "enablePullDownRefresh": false,
+  "disableScroll": true,
+  "navigationBarTitleText": "彼安诺融合",
+  "navigationBarBackgroundColor": "#F7F7F8",
+  "backgroundColor": "#F7F7F8",
+  "backgroundColorTop": "#F7F7F8",
+  "backgroundColorBottom": "#F7F7F8"
+}

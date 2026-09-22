@@ -1,0 +1,33 @@
+{
+  "pages": [
+    "pages/chatBot/chatBot",
+    "pages/profile/profile",
+    "pages/index/index",
+    "pages/foodBuy/foodBuy"
+  ],
+  "usingComponents": {
+    "custom-map": "/components/toolCard/map/index",
+    "custom-weather": "/components/toolCard/weather/index",
+    "custom-food-list": "/components/toolCard/food-list/index",
+    "custom-business-list": "/components/toolCard/business-list/index"
+  },
+  "window": {
+    "navigationBarBackgroundColor": "#F7F7F8",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "彼安诺融合",
+    "backgroundColor": "#F7F7F8",
+    "backgroundColorTop": "#F7F7F8",
+    "backgroundColorBottom": "#F7F7F8",
+    "backgroundTextStyle": "light",
+    "enablePullDownRefresh": false
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
+  "networkTimeout": {
+    "request": 300000,
+    "connectSocket": 60000,
+    "uploadFile": 60000,
+    "downloadFile": 60000
+  }
+}
