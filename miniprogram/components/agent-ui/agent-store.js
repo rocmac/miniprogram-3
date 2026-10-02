@@ -65,3 +65,18 @@ export function cloudDeleteConversation(botId, conversationId) {
     conversationId,
   });
 }
+
+export function cloudUpdateConversation({ botId, conversationId, title, pinned, pinnedAt }) {
+  if (!botId || !conversationId) return Promise.resolve({ success: false });
+  const data = {
+    action: "update",
+    botId,
+    conversationId,
+  };
+  if (title != null) data.title = title;
+  if (typeof pinned === "boolean") {
+    data.pinned = pinned;
+    data.pinnedAt = pinnedAt || Date.now();
+  }
+  return callStore(data);
+}

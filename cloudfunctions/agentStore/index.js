@@ -73,6 +73,17 @@ const sortChatRows = (rows) => {
     .map((row) => row.item);
 };
 
+const mapConversation = (doc, fallbackId) => ({
+  conversationId: doc.conversation_id || fallbackId,
+  title: doc.title || DEFAULT_TITLE,
+  createTime: toIso(doc.createdAt),
+  updateTime: toIso(doc.updatedAt),
+  pinned: !!doc.pinned,
+  pinnedAt: doc.pinnedAt || 0,
+  titleCustom: !!doc.titleCustom,
+  titleAt: doc.titleAt || 0,
+});
+
 const saveConversation = async (botId, userId, conversationId, title) => {
   const now = Date.now();
   const _id = convoDocId(botId, userId, conversationId);
@@ -82,20 +93,22 @@ const saveConversation = async (botId, userId, conversationId, title) => {
     const doc = existing && existing.data;
     if (doc) {
       const patch = { updatedAt: now };
-      if (nextTitle && nextTitle !== DEFAULT_TITLE) patch.title = nextTitle;
+      if (nextTitle && nextTitle !== DEFAULT_TITLE && !doc.titleCustom) patch.title = nextTitle;
       await col.doc(_id).update({ data: patch });
-      return {
+      return mapConversation(
+        Object.assign({}, doc, patch, { conversation_id: conversationId }),
         conversationId,
-        title: patch.title || doc.title || DEFAULT_TITLE,
-        createTime: toIso(doc.createdAt),
-        updateTime: toIso(now),
-      };
+      );
     }
     const data = {
       bot_id: botId,
       user_id: userId,
       conversation_id: conversationId,
       title: nextTitle,
+      titleCustom: false,
+      titleAt: 0,
+      pinned: false,
+      pinnedAt: 0,
       createdAt: now,
       updatedAt: now,
     };
@@ -118,16 +131,19 @@ const listConversations = async (botId, userId, pageNumber, pageSize) => {
   const page = Math.max(1, pageNumber || 1);
   return withCol(CONV, async (col) => {
     const where = { bot_id: botId, user_id: userId };
-    const [listRes, countRes] = await Promise.all([
+    const [listRes, countRes, pinnedRes] = await Promise.all([
       col.where(where).orderBy("updatedAt", "desc").skip((page - 1) * limit).limit(limit).get(),
       col.where(where).count(),
+      col.where({ bot_id: botId, user_id: userId, pinned: true }).limit(50).get().catch(() => ({ data: [] })),
     ]);
-    const data = (listRes.data || []).map((doc) => ({
-      conversationId: doc.conversation_id,
-      title: doc.title || DEFAULT_TITLE,
-      createTime: toIso(doc.createdAt),
-      updateTime: toIso(doc.updatedAt),
-    }));
+    const seen = {};
+    const data = [];
+    (pinnedRes.data || []).concat(listRes.data || []).forEach((doc) => {
+      const id = doc.conversation_id;
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      data.push(mapConversation(doc, id));
+    });
     return { data, total: (countRes && countRes.total) || data.length };
   });
 };
@@ -194,6 +210,48 @@ const listRecords = async (botId, userId, conversationId, pageNumber, pageSize) 
   });
 };
 
+const updateConversation = async (botId, userId, conversationId, patch = {}) => {
+  const now = Date.now();
+  const _id = convoDocId(botId, userId, conversationId);
+  const next = { updatedAt: now };
+  if (patch.title != null) {
+    const title = String(patch.title).replace(/\s+/g, " ").trim().slice(0, 30);
+    if (!title) {
+      const error = new Error("名称不能为空");
+      throw error;
+    }
+    next.title = title;
+    next.titleCustom = true;
+    next.titleAt = now;
+  }
+  if (typeof patch.pinned === "boolean") {
+    next.pinned = patch.pinned;
+    next.pinnedAt = typeof patch.pinnedAt === "number" ? patch.pinnedAt : now;
+  }
+  return withCol(CONV, async (col) => {
+    const existing = await col.doc(_id).get().catch(() => null);
+    const doc = existing && existing.data;
+    if (doc) {
+      await col.doc(_id).update({ data: next });
+      return mapConversation(Object.assign({}, doc, next, { conversation_id: conversationId }), conversationId);
+    }
+    const data = {
+      bot_id: botId,
+      user_id: userId,
+      conversation_id: conversationId,
+      title: next.title || DEFAULT_TITLE,
+      titleCustom: !!next.titleCustom,
+      titleAt: next.titleAt || 0,
+      pinned: !!next.pinned,
+      pinnedAt: next.pinnedAt || 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await col.add({ data: { _id, ...data } });
+    return mapConversation(data, conversationId);
+  });
+};
+
 const deleteConversation = async (botId, userId, conversationId) => {
   const _id = convoDocId(botId, userId, conversationId);
   await withCol(CONV, async (col) => {
@@ -238,6 +296,15 @@ exports.main = async (event = {}, context) => {
         event.records || [],
         event.title,
       );
+      return { success: true, ...data };
+    }
+    if (action === "update") {
+      if (!event.conversationId) return { success: false, error: "conversationId 不能为空" };
+      const data = await updateConversation(botId, userId, event.conversationId, {
+        title: event.title,
+        pinned: event.pinned,
+        pinnedAt: event.pinnedAt,
+      });
       return { success: true, ...data };
     }
     if (action === "delete") {

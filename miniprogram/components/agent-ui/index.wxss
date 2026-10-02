@@ -687,7 +687,31 @@
   padding: 12px 8px;
   margin-bottom: 2px;
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
 
+.con-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 28rpx;
+  color: #1a1a1a;
+}
+
+.con-more {
+  flex-shrink: 0;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 40rpx;
+  text-align: center;
+  color: #8e8ea0;
+  font-size: 32rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
 }
 
 .con-item:active {
@@ -803,6 +827,10 @@
 
 .action-item:active {
   background: #f8f8f8;
+}
+
+.action-item-danger {
+  color: #ff303b;
 }
 
 .cancel-item {

@@ -1,6 +1,6 @@
 // components/agent-ui/index.js
-import { checkConfig, randomSelectInitquestion, getCloudInstance, commonRequest, sleep, normalizeBot, isAgentV2Id, formatCloudError, extractConversationList, extractConversation, extractRecordList, aiBotRequest, aiBotJsonRequest, isConversationSdkUnsupported, extractConversationFromAny, readBotReply, makeConversationId, makeCloudConversationId, acpSend, isLocalConversationId, normalizeAcpRecords } from "./tools";
-import { cloudSaveChat, cloudListConversations, cloudLoadRecords, cloudDeleteConversation } from "./agent-store";
+import { checkConfig, randomSelectInitquestion, getCloudInstance, commonRequest, sleep, normalizeBot, isAgentV2Id, formatCloudError, extractConversationList, extractConversation, extractRecordList, aiBotRequest, aiBotJsonRequest, isConversationSdkUnsupported, extractConversationFromAny, readBotReply, makeConversationId, makeCloudConversationId, acpSend, isLocalConversationId, normalizeAcpRecords, stripBrokenChars } from "./tools";
+import { cloudSaveChat, cloudListConversations, cloudLoadRecords, cloudDeleteConversation, cloudUpdateConversation } from "./agent-store";
 import md5 from "./md5.js";
 Component({
   properties: {
@@ -580,11 +580,9 @@ Component({
       this.persistCurrentChat();
       this.setData({
         isDrawerShow: false,
-        conversation: {
-          conversationId: conversation.conversationId,
-          title: conversation.title,
+        conversation: this.pickConversationView(conversation, {
           fromServer: !isLocalConversationId(conversation.conversationId),
-        },
+        }),
         canPullHistory: true,
         page: 1,
         size: 10,
@@ -757,7 +755,7 @@ Component({
       let paintTimer = null;
       let pendingText = "";
       const paint = (text) => {
-        pendingText = text;
+        pendingText = stripBrokenChars(text);
         const apply = () => {
           lastPaint = Date.now();
           paintTimer = null;
@@ -869,12 +867,106 @@ Component({
       });
     },
     handleLongPressConversation: function (e) {
-      // 长按会话，显示操作菜单
       const { conversation } = e.currentTarget.dataset;
+      if (!conversation || !conversation.conversationId) {
+        return;
+      }
       this.setData({
         showActionMenu: true,
         selectedConversation: conversation,
       });
+    },
+    handleRenameConversation: function (e) {
+      const conversation =
+        (e.currentTarget.dataset && e.currentTarget.dataset.conversation) || this.data.selectedConversation;
+      this.hideActionMenu();
+      if (!conversation || !conversation.conversationId) {
+        return;
+      }
+      const currentTitle = (conversation.title || "").trim();
+      const that = this;
+      wx.showModal({
+        title: "重命名",
+        editable: true,
+        placeholderText: "输入会话名称",
+        content: currentTitle === "新会话" ? "" : currentTitle,
+        confirmText: "确定",
+        success: function (res) {
+          if (!res.confirm) {
+            return;
+          }
+          const title = String(res.content || "").replace(/\s+/g, " ").trim().slice(0, 30);
+          if (!title) {
+            wx.showToast({ title: "名称不能为空", icon: "none" });
+            return;
+          }
+          const titleAt = Date.now();
+          that.applyConversationMeta(conversation.conversationId, {
+            title,
+            titleCustom: true,
+            titleAt,
+          });
+          cloudUpdateConversation({
+            botId: that.data.agentConfig.botId,
+            conversationId: conversation.conversationId,
+            title,
+          });
+          wx.showToast({ title: "已重命名", icon: "success" });
+        },
+      });
+    },
+    handlePinConversation: function (e) {
+      const conversation =
+        (e.currentTarget.dataset && e.currentTarget.dataset.conversation) || this.data.selectedConversation;
+      this.hideActionMenu();
+      if (!conversation || !conversation.conversationId) {
+        return;
+      }
+      const pinned = !conversation.pinned;
+      const pinnedAt = Date.now();
+      this.applyConversationMeta(conversation.conversationId, { pinned, pinnedAt });
+      cloudUpdateConversation({
+        botId: this.data.agentConfig.botId,
+        conversationId: conversation.conversationId,
+        pinned,
+        pinnedAt,
+      });
+      wx.showToast({
+        title: pinned ? "已置顶" : "已取消置顶",
+        icon: "none",
+      });
+    },
+    applyConversationMeta: function (conversationId, patch) {
+      const base = this.mergeConversationLists([
+        this.readLocalConversations(),
+        this.data.conversations || [],
+      ]).map((item) => (item.conversationId === conversationId ? Object.assign({}, item, patch) : item));
+      const merged = this.mergeConversationLists([base]);
+      this.writeLocalConversations(merged);
+      const nextData = {
+        conversations: merged,
+        transformConversations: this.transformConversationList(merged),
+      };
+      const current = this.data.conversation;
+      if (current && current.conversationId === conversationId) {
+        nextData.conversation = Object.assign({}, current, patch);
+      }
+      this.setData(nextData);
+    },
+    pickConversationView: function (conversation, extra) {
+      const src = conversation || {};
+      return Object.assign(
+        {
+          conversationId: src.conversationId,
+          title: src.title,
+          titleCustom: !!src.titleCustom,
+          titleAt: src.titleAt || 0,
+          pinned: !!src.pinned,
+          pinnedAt: src.pinnedAt || 0,
+          fromServer: src.fromServer,
+        },
+        extra || {}
+      );
     },
     hideActionMenu: function () {
       // 隐藏操作菜单
@@ -894,15 +986,25 @@ Component({
         return;
       }
       const now = Date.now();
-      const title = (conv.title || "").trim();
-      if (!title || title === "新会话") {
+      const existing = this.mergeConversationLists([
+        this.readLocalConversations(),
+        this.data.conversations || [],
+      ]).find((item) => item.conversationId === conv.conversationId);
+      const incomingTitle = (conv.title || "").trim();
+      const title = existing && existing.titleCustom ? existing.title : incomingTitle;
+      if ((!title || title === "新会话") && !(existing && existing.title && existing.title !== "新会话")) {
         return;
       }
       const item = {
         conversationId: conv.conversationId,
-        title,
-        createTime: conv.createTime || now,
+        title: title || (existing && existing.title) || "新会话",
+        titleCustom: !!(existing && existing.titleCustom) || !!conv.titleCustom,
+        titleAt: Math.max((existing && existing.titleAt) || 0, conv.titleAt || 0),
+        pinned: existing ? !!existing.pinned : !!conv.pinned,
+        pinnedAt: existing ? existing.pinnedAt || 0 : conv.pinnedAt || 0,
+        createTime: (existing && existing.createTime) || conv.createTime || now,
         updateTime: conv.updateTime || now,
+        fromServer: conv.fromServer != null ? conv.fromServer : existing && existing.fromServer,
       };
       const merged = this.mergeConversationLists([
         this.readLocalConversations(),
@@ -1063,7 +1165,7 @@ Component({
       console.log("[yuanqichat] sidebar wiped for fresh test");
     },
     transformConversationList: function (conversations) {
-      // 区分今天，本月，更早
+      const pinnedCon = [];
       const todayCon = [];
       const curMonthCon = [];
       const earlyCon = [];
@@ -1071,6 +1173,10 @@ Component({
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const monthFirstDate = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
       for (let item of conversations) {
+        if (item && item.pinned) {
+          pinnedCon.push(item);
+          continue;
+        }
         let itemDate = new Date(item.createTime || item.updateTime || Date.now()).getTime();
         if (!itemDate) {
           itemDate = Date.now();
@@ -1083,7 +1189,9 @@ Component({
           earlyCon.push(item);
         }
       }
+      pinnedCon.sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0));
       return {
+        pinnedCon,
         todayCon,
         curMonthCon,
         earlyCon,
@@ -1139,14 +1247,15 @@ Component({
       }
       this.writeLocalChatRecords(convId, records);
       const botId = this.data.agentConfig.botId;
-      const title =
+      const storedTitle =
         (this.data.conversation && this.data.conversation.title) ||
         (records.find((item) => item.role === "user" && item.content) || {}).content ||
         "";
+      const titleLimit = this.data.conversation && this.data.conversation.titleCustom ? 30 : 20;
       cloudSaveChat({
         botId,
         conversationId: convId,
-        title: String(title).replace(/\s+/g, " ").trim().slice(0, 20),
+        title: String(storedTitle).replace(/\s+/g, " ").trim().slice(0, titleLimit),
         records,
       });
     },
@@ -1168,6 +1277,10 @@ Component({
         console.log("writeLocalConversations", e);
       }
     },
+    conversationTime: function (value) {
+      const time = new Date(value || 0).getTime();
+      return Number.isNaN(time) ? 0 : time;
+    },
     mergeConversationLists: function (lists) {
       const map = {};
       (lists || []).forEach((list) => {
@@ -1176,32 +1289,67 @@ Component({
             return;
           }
           const prev = map[item.conversationId];
+          const incoming = {
+            conversationId: item.conversationId,
+            title: item.title || "新会话",
+            createTime: item.createTime || Date.now(),
+            updateTime: item.updateTime || item.createTime || Date.now(),
+            titleCustom: !!item.titleCustom,
+            titleAt: item.titleAt || 0,
+            pinned: !!item.pinned,
+            pinnedAt: item.pinnedAt || 0,
+            fromServer: item.fromServer,
+            threadId: item.threadId,
+          };
           if (!prev) {
-            map[item.conversationId] = {
-              conversationId: item.conversationId,
-              title: item.title || "新会话",
-              createTime: item.createTime || Date.now(),
-              updateTime: item.updateTime || item.createTime || Date.now(),
-            };
+            map[item.conversationId] = incoming;
             return;
           }
-          const betterTitle =
-            item.title && item.title !== "新会话" ? item.title : prev.title && prev.title !== "新会话" ? prev.title : item.title || prev.title || "新会话";
+          let title = prev.title;
+          let titleCustom = !!prev.titleCustom;
+          let titleAt = prev.titleAt || 0;
+          if (incoming.titleCustom || prev.titleCustom) {
+            titleCustom = true;
+            if (incoming.titleCustom && (!prev.titleCustom || (incoming.titleAt || 0) >= (prev.titleAt || 0))) {
+              title = incoming.title || prev.title;
+              titleAt = Math.max(titleAt, incoming.titleAt || 0);
+            }
+          } else if (incoming.title && incoming.title !== "新会话") {
+            title = incoming.title;
+          } else if (!prev.title || prev.title === "新会话") {
+            title = incoming.title || prev.title || "新会话";
+          }
+          let pinned = !!prev.pinned;
+          let pinnedAt = prev.pinnedAt || 0;
+          if ((incoming.pinnedAt || 0) > pinnedAt) {
+            pinned = !!incoming.pinned;
+            pinnedAt = incoming.pinnedAt;
+          } else if ((incoming.pinnedAt || 0) === pinnedAt && incoming.pinned) {
+            pinned = true;
+          }
+          const prevUpdate = this.conversationTime(prev.updateTime);
+          const nextUpdate = this.conversationTime(incoming.updateTime);
           map[item.conversationId] = {
             conversationId: item.conversationId,
-            title: betterTitle,
-            createTime: prev.createTime || item.createTime,
-            updateTime: item.updateTime || prev.updateTime,
+            title,
+            titleCustom,
+            titleAt,
+            createTime: prev.createTime || incoming.createTime,
+            updateTime: nextUpdate >= prevUpdate ? incoming.updateTime : prev.updateTime,
+            pinned,
+            pinnedAt,
+            fromServer: incoming.fromServer != null ? incoming.fromServer : prev.fromServer,
+            threadId: incoming.threadId || prev.threadId,
           };
         });
       });
       return Object.keys(map)
         .map((key) => map[key])
-        .sort(
-          (a, b) =>
-            new Date(b.updateTime || b.createTime || 0).getTime() -
-            new Date(a.updateTime || a.createTime || 0).getTime()
-        );
+        .sort((a, b) => {
+          if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+          if (a.pinned && b.pinned) return (b.pinnedAt || 0) - (a.pinnedAt || 0);
+          return this.conversationTime(b.updateTime || b.createTime) - this.conversationTime(a.updateTime || a.createTime);
+        });
     },
     getThreadStoreKey: function (botId) {
       return `agent_threads_${botId || this.data.agentV2Config.agentID || "default"}`;
@@ -2003,15 +2151,17 @@ Component({
           if (conversationId && (/^c-\d+/.test(conversationId) || current.fromServer === false)) {
             conversationId = "";
           }
-          const draftTitle = inputValue ? String(inputValue).replace(/\s+/g, " ").trim().slice(0, 20) : "新会话";
+          const autoTitle = inputValue ? String(inputValue).replace(/\s+/g, " ").trim().slice(0, 20) : "新会话";
+          const draftTitle = current.titleCustom && current.title ? current.title : autoTitle;
           if (!conversationId) {
             conversationId = makeCloudConversationId();
             this.setData({
-              conversation: {
+              conversation: this.pickConversationView(current, {
                 conversationId,
                 title: draftTitle,
+                titleCustom: !!current.titleCustom,
                 fromServer: true,
-              },
+              }),
             });
           }
           const oldLocalId = (this.data.conversation && this.data.conversation.conversationId) || "";
@@ -2019,12 +2169,13 @@ Component({
           let collected = await this.sendYuanqiMessage(ai, botId, inputValue, conversationId, fromServer);
           if (collected && collected.sessionId) {
             conversationId = collected.sessionId;
+            const prev = this.data.conversation || current;
             this.setData({
-              conversation: {
+              conversation: this.pickConversationView(prev, {
                 conversationId,
-                title: draftTitle,
+                title: prev.titleCustom && prev.title ? prev.title : draftTitle,
                 fromServer: true,
-              },
+              }),
             });
             if (oldLocalId && oldLocalId !== conversationId) {
               this.replaceConversationId(oldLocalId, conversationId);
@@ -2044,7 +2195,7 @@ Component({
         }
         const lastValueIndex = this.data.chatRecords.length - 1;
         const collected = res;
-        let contentText = (collected && collected.text) || "";
+        let contentText = stripBrokenChars((collected && collected.text) || "");
         if (this.data.chatStatus === 0) {
           isManuallyPaused = true;
         }
@@ -2060,9 +2211,15 @@ Component({
           (this.data.conversation && this.data.conversation.conversationId) ||
           "";
         if (convId) {
+          const listed = this.data.conversation || {};
+          const autoTitle = inputValue ? String(inputValue).replace(/\s+/g, " ").trim().slice(0, 20) : "新会话";
           this.upsertConversationInList({
             conversationId: convId,
-            title: inputValue ? String(inputValue).replace(/\s+/g, " ").trim().slice(0, 20) : "新会话",
+            title: listed.titleCustom && listed.title ? listed.title : autoTitle,
+            titleCustom: !!listed.titleCustom,
+            titleAt: listed.titleAt || 0,
+            pinned: !!listed.pinned,
+            pinnedAt: listed.pinnedAt || 0,
             updateTime: Date.now(),
           });
         }
@@ -2241,6 +2398,64 @@ Component({
           wx.showToast({
             title: "复制成功",
             icon: "success",
+          });
+        },
+      });
+    },
+    shareMessage: function (e) {
+      const raw = e.currentTarget.dataset.content || "";
+      const content = String(raw)
+        .replace(/\r\n/g, "\n")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/__(.+?)__/g, "$1")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .trim();
+      if (!content) {
+        wx.showToast({
+          title: "暂无可转发的文字",
+          icon: "none",
+        });
+        return;
+      }
+      const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
+      const platform = (device && device.platform) || "";
+      if (platform === "devtools" || platform === "windows" || platform === "mac") {
+        wx.showModal({
+          title: "请用手机预览",
+          content: "开发者工具模拟器不能把文字转发到微信聊天。请用手机扫码预览，再点这条回复下的转发。",
+          showCancel: false,
+        });
+        return;
+      }
+      const filePath = `${wx.env.USER_DATA_PATH}/reply.txt`;
+      try {
+        wx.getFileSystemManager().writeFileSync(filePath, content, "utf8");
+      } catch (err) {
+        wx.showToast({
+          title: "生成转发内容失败",
+          icon: "none",
+        });
+        return;
+      }
+      wx.shareFileMessage({
+        filePath,
+        fileName: "回复.txt",
+        fail(err) {
+          const msg = (err && err.errMsg) || "";
+          if (/cancel/i.test(msg)) return;
+          if (/not supported|不支持/i.test(msg)) {
+            wx.showModal({
+              title: "请用手机预览",
+              content: "当前环境不能把文字转发到微信聊天。请用手机微信打开后再点转发。",
+              showCancel: false,
+            });
+            return;
+          }
+          wx.showToast({
+            title: "转发失败，请重试",
+            icon: "none",
           });
         },
       });
@@ -2775,7 +2990,7 @@ Component({
 
         // 兼容 yuanqichat / 元器 IBot 的经典 SSE：{ type: "text", content: "..." }
         if (!isAgui && (data.content != null || data.type === "text")) {
-          const chunk = data.content || "";
+          const chunk = stripBrokenChars(data.content || "");
           if (!chunk) {
             continue;
           }

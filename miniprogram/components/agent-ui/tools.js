@@ -310,10 +310,18 @@ const utf8IncompleteTail = (bytes) => {
   return 0;
 };
 
+/** 去掉替换符。一个汉字被从字节中间切开时，手机会画出 1～2 个方框。 */
+export const stripBrokenChars = (text) => String(text || "").replace(/[\uFFFC-\uFFFF]/g, "");
+
 const bytesToUtf8 = (bytes) => {
   if (!bytes || !bytes.length) return "";
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const isolated =
+    view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
+      ? view
+      : new Uint8Array(view);
   if (typeof TextDecoder !== "undefined") {
-    return new TextDecoder("utf-8").decode(bytes);
+    return stripBrokenChars(new TextDecoder("utf-8").decode(isolated));
   }
   let binary = "";
   const step = 8192;
@@ -571,7 +579,7 @@ const applyAcpFrame = (out, frame, onText) => {
   const update = params.update || {};
   const sessionUpdate = update.sessionUpdate || "";
   const content = update.content || {};
-  let piece = typeof content === "string" ? content : content.text || update.text || "";
+  let piece = stripBrokenChars(typeof content === "string" ? content : content.text || update.text || "");
   const messageId = update.messageId || update.message_id || "";
   if (sessionUpdate === "user_message_chunk" || sessionUpdate === "user_message") {
     appendAcpRecord(out, "user", piece, messageId);
@@ -579,7 +587,7 @@ const applyAcpFrame = (out, frame, onText) => {
   if (sessionUpdate === "agent_message") {
     if (piece && piece !== out.text) {
       out.replaceText = true;
-      out.text = piece;
+      out.text = stripBrokenChars(piece);
       const last = out.records[out.records.length - 1];
       if (last && last.role === "assistant") {
         last.content = piece;
@@ -599,7 +607,7 @@ const applyAcpFrame = (out, frame, onText) => {
       if (!piece) return;
     }
     appendAcpRecord(out, "assistant", piece, messageId);
-    out.text += piece;
+    out.text = stripBrokenChars(out.text + piece);
     if (onText) onText(out.text);
   }
 };
@@ -667,9 +675,9 @@ const mergeCollected = (out, extra) => {
     return out;
   }
   if (extra.replaceText) {
-    out.text = extra.text || "";
+    out.text = stripBrokenChars(extra.text || "");
   } else if (extra.text) {
-    out.text += extra.text;
+    out.text = stripBrokenChars(out.text + extra.text);
   }
   if (extra.sessionId) {
     out.sessionId = extra.sessionId;
