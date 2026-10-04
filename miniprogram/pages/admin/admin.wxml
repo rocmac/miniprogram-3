@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="summary">待审核 {{pendingCount}} 人 · 共 {{users.length}} 人</view>
+  <view wx:if="{{users.length === 0 && !loading}}" class="empty">还没有用户记录</view>
+  <view class="card" wx:for="{{users}}" wx:key="_id">
+    <image class="avatar" src="{{item.avatar}}" mode="aspectFill" />
+    <view class="meta">
+      <view class="name-row">
+        <text class="name">{{item.nickName}}</text>
+        <text class="tag {{item.tagClass}}">{{item.statusText}}</text>
+      </view>
+      <text class="sub">{{item.timeText}}</text>
+    </view>
+    <view class="actions" wx:if="{{!item.isAdmin}}">
+      <view
+        wx:if="{{item.accessStatus !== 'approved'}}"
+        class="btn allow"
+        data-id="{{item._id}}"
+        data-name="{{item.nickName}}"
+        bindtap="onAllow"
+      >允许</view>
+      <view
+        wx:else
+        class="btn deny"
+        data-id="{{item._id}}"
+        data-name="{{item.nickName}}"
+        bindtap="onDeny"
+      >停用</view>
+    </view>
+  </view>
+</view>

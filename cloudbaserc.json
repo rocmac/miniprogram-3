@@ -26,7 +26,7 @@
   "databases": [
     {
       "collectionName": "users",
-      "description": "小程序用户登录信息",
+      "description": "小程序用户。isAdmin 标记管理员，accessStatus 为 pending、approved 或 rejected",
       "aclTag": "ADMINONLY"
     }
   ]

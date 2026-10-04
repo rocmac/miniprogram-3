@@ -1,0 +1,43 @@
+<view class="page">
+  <view class="card">
+    <text class="title">{{bannerTitle}}</text>
+    <text class="desc">{{bannerDesc}}</text>
+  </view>
+
+  <view class="card privacy-card" wx:if="{{needPrivacy}}">
+    <text class="desc">填写姓名和头像前，请先同意隐私保护指引。</text>
+    <button
+      class="submit privacy-btn"
+      open-type="agreePrivacyAuthorization"
+      bindagreeprivacyauthorization="onAgreePrivacy"
+    >同意并继续</button>
+  </view>
+
+  <view class="card user-card">
+    <view class="avatar-hit" bindtap="onPickAvatar">
+      <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" />
+      <view class="avatar-mask">选头像</view>
+    </view>
+    <view class="user-fields">
+      <text class="label">申请人姓名</text>
+      <input
+        class="nickname"
+        type="text"
+        maxlength="20"
+        placeholder="填写申请人姓名"
+        value="{{nickName}}"
+        bindinput="onNicknameChange"
+        bindblur="onNicknameBlur"
+      />
+      <text class="hint">左侧头像从相册选择，也可以使用下面的微信头像。</text>
+    </view>
+  </view>
+
+  <button class="wechat-avatar" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+    <image class="wechat-avatar-icon" src="{{avatarUrl}}" mode="aspectFill" />
+    <text>使用微信头像</text>
+  </button>
+
+  <button class="submit" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onSubmit">{{submitText}}</button>
+  <view wx:if="{{waiting}}" class="refresh" bindtap="refreshStatus">刷新审核状态</view>
+</view>

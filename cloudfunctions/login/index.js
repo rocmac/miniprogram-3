@@ -41,8 +41,28 @@ const withUsers = async (handler) => {
   }
 };
 
+const toIso = (value) => {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString();
+};
+
+const isProfileReady = (doc) => {
+  if (!doc) return false;
+  const name = String(doc.nickName || "").trim();
+  const avatar = doc.avatarFileID || doc.avatarUrl || "";
+  return !!(name && name !== DEFAULT_NICKNAME && avatar);
+};
+
 const pickUser = (doc) => {
   if (!doc) return null;
+  const isAdmin = !!doc.isAdmin;
+  const accessStatus = isAdmin
+    ? "approved"
+    : doc.accessStatus === "approved" || doc.accessStatus === "rejected"
+      ? doc.accessStatus
+      : "pending";
   return {
     _id: doc._id,
     openid: doc.openid,
@@ -52,12 +72,34 @@ const pickUser = (doc) => {
     avatarFileID: doc.avatarFileID || "",
     phone: doc.phone || "",
     loginCount: doc.loginCount || 1,
-    lastLoginAt: doc.lastLoginAt || doc.updatedAt || "",
-    createdAt: doc.createdAt || "",
-    updatedAt: doc.updatedAt || "",
+    lastLoginAt: toIso(doc.lastLoginAt || doc.updatedAt),
+    createdAt: toIso(doc.createdAt),
+    updatedAt: toIso(doc.updatedAt),
+    appliedAt: toIso(doc.appliedAt),
     lastScene: doc.lastScene || "",
     platform: (doc.device && doc.device.platform) || "",
-    needProfile: !doc.nickName || doc.nickName === DEFAULT_NICKNAME,
+    needProfile: !isProfileReady(doc),
+    profileReady: isProfileReady(doc),
+    isAdmin,
+    accessStatus,
+  };
+};
+
+const pickAdminUser = (doc) => {
+  const user = pickUser(doc);
+  if (!user) return null;
+  return {
+    _id: user._id,
+    nickName: user.nickName,
+    avatarUrl: user.avatarUrl,
+    avatarFileID: user.avatarFileID,
+    isAdmin: user.isAdmin,
+    accessStatus: user.accessStatus,
+    profileReady: user.profileReady,
+    loginCount: user.loginCount,
+    createdAt: user.createdAt,
+    appliedAt: user.appliedAt,
+    lastLoginAt: user.lastLoginAt,
   };
 };
 
@@ -88,6 +130,8 @@ const login = async (event, wxContext) => {
       avatarUrl,
       avatarFileID,
       phone: "",
+      isAdmin: false,
+      accessStatus: "pending",
       loginCount: 1,
       lastLoginAt: now,
       createdAt: now,
@@ -100,8 +144,8 @@ const login = async (event, wxContext) => {
         system: device.system || "",
       },
     };
-    const addResult = await withUsers((users) => users.add({ data: newUser }));
-    return pickUser({ ...newUser, _id: addResult._id });
+    await withUsers((users) => users.add({ data: newUser }));
+    return pickUser(await findUser(openid));
   }
 
   const updateData = {
@@ -120,9 +164,10 @@ const login = async (event, wxContext) => {
   if (nickName) updateData.nickName = nickName;
   if (avatarUrl) updateData.avatarUrl = avatarUrl;
   if (avatarFileID) updateData.avatarFileID = avatarFileID;
+  if (!existing.isAdmin && !existing.accessStatus) updateData.accessStatus = "pending";
 
   await withUsers((users) => users.doc(existing._id).update({ data: updateData }));
-  return pickUser({ ...existing, ...updateData });
+  return pickUser(await findUser(openid));
 };
 
 const updateProfile = async (event, wxContext) => {
@@ -139,6 +184,90 @@ const updateProfile = async (event, wxContext) => {
   if (event.avatarFileID != null) updateData.avatarFileID = event.avatarFileID;
   await withUsers((users) => users.doc(existing._id).update({ data: updateData }));
   return pickUser({ ...existing, ...updateData });
+};
+
+const applyAccess = async (event, wxContext) => {
+  let existing = await findUser(wxContext.OPENID);
+  if (!existing) {
+    await login(event, wxContext);
+    existing = await findUser(wxContext.OPENID);
+  }
+  const nickName =
+    event.nickName != null ? String(event.nickName).trim().slice(0, 20) : String(existing.nickName || "").trim();
+  const updateData = { updatedAt: new Date() };
+  if (nickName) updateData.nickName = nickName;
+  if (event.avatarFileID) {
+    updateData.avatarFileID = event.avatarFileID;
+    updateData.avatarUrl = event.avatarUrl || event.avatarFileID;
+  } else if (event.avatarUrl) {
+    updateData.avatarUrl = event.avatarUrl;
+  }
+  const merged = { ...existing, ...updateData };
+  if (!isProfileReady(merged)) {
+    throw new Error("请先选择头像并填写申请人姓名");
+  }
+  if (!merged.isAdmin && merged.accessStatus !== "approved") {
+    updateData.accessStatus = "pending";
+    updateData.appliedAt = new Date();
+  }
+  await withUsers((users) => users.doc(existing._id).update({ data: updateData }));
+  return pickUser({ ...existing, ...updateData });
+};
+
+const requireAdmin = async (wxContext) => {
+  const me = await findUser(wxContext.OPENID);
+  if (!me || !me.isAdmin) {
+    throw new Error("没有管理权限");
+  }
+  return me;
+};
+
+const listUsers = async (wxContext) => {
+  const me = await requireAdmin(wxContext);
+  const listed = await withUsers((users) => users.limit(100).get());
+  const rows = ((listed && listed.data) || []).map(pickAdminUser).sort((a, b) => {
+    const rank = (item) => {
+      if (item.isAdmin) return 4;
+      if (item.accessStatus === "pending" && item.profileReady) return 0;
+      if (item.accessStatus === "pending") return 1;
+      if (item.accessStatus === "rejected") return 2;
+      return 3;
+    };
+    const diff = rank(a) - rank(b);
+    if (diff !== 0) return diff;
+    return new Date(b.appliedAt || b.createdAt || 0) - new Date(a.appliedAt || a.createdAt || 0);
+  });
+  return { me: pickUser(me), users: rows };
+};
+
+const setUserAccess = async (event, wxContext) => {
+  const me = await requireAdmin(wxContext);
+  const userId = String(event.userId || "");
+  const accessStatus = event.accessStatus === "approved" || event.accessStatus === "rejected" ? event.accessStatus : "";
+  if (!userId || !accessStatus) {
+    throw new Error("参数不正确");
+  }
+  let target = null;
+  try {
+    const targetRes = await withUsers((users) => users.doc(userId).get());
+    target = targetRes && targetRes.data;
+  } catch (error) {
+    target = null;
+  }
+  if (!target) throw new Error("找不到该用户");
+  if (target.isAdmin || target.openid === me.openid) {
+    throw new Error("不能修改管理员的使用权限");
+  }
+  await withUsers((users) =>
+    users.doc(userId).update({
+      data: {
+        accessStatus,
+        reviewedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
+  );
+  return pickUser(me);
 };
 
 const bindPhone = async (event, wxContext) => {
@@ -193,6 +322,13 @@ exports.main = async (event = {}, context) => {
       if (!data) data = await login(event, wxContext);
     } else if (action === "updateProfile") {
       data = await updateProfile(event, wxContext);
+    } else if (action === "apply") {
+      data = await applyAccess(event, wxContext);
+    } else if (action === "listUsers") {
+      const listed = await listUsers(wxContext);
+      return { success: true, data: listed.me, users: listed.users };
+    } else if (action === "setUserAccess") {
+      data = await setUserAccess(event, wxContext);
     } else if (action === "bindPhone") {
       data = await bindPhone(event, wxContext);
     } else {

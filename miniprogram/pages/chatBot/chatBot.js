@@ -1,6 +1,10 @@
 // pages/chatBot/chatBot.js
+const userService = require("../../utils/user");
+
 Page({
   data: {
+    allowed: false,
+    checkError: "",
     chatMode: "bot",
     showBotAvatar: true,
     agentConfig: {
@@ -32,10 +36,37 @@ Page({
         backgroundColorBottom: "#F7F7F8",
       });
     }
-    const agent = this.selectComponent("#agent");
-    if (agent && typeof agent.syncUserInfo === "function") {
-      agent.syncUserInfo();
-    }
+    this.confirmAccess();
+  },
+  enterChat() {
+    this.setData({ allowed: true, checkError: "" }, () => {
+      const agent = this.selectComponent("#agent");
+      if (agent && typeof agent.syncUserInfo === "function") {
+        agent.syncUserInfo();
+      }
+    });
+  },
+  confirmAccess() {
+    const cached = userService.getLocalUser();
+    if (userService.canUseApp(cached)) this.enterChat();
+    userService
+      .loginUser({ action: "getProfile" })
+      .then((user) => {
+        if (userService.canUseApp(user)) {
+          this.enterChat();
+          return;
+        }
+        this.setData({ allowed: false });
+        wx.redirectTo({ url: "/pages/apply/apply" });
+      })
+      .catch((err) => {
+        if (this.data.allowed) return;
+        this.setData({ checkError: (err && err.message) || "无法确认使用权限" });
+      });
+  },
+  retryAccess() {
+    this.setData({ checkError: "" });
+    this.confirmAccess();
   },
   onShareAppMessage() {
     return {

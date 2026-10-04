@@ -76,6 +76,38 @@ function bindPhone(payload) {
   return callLogin(Object.assign({ action: "bindPhone" }, payload || {}));
 }
 
+function applyAccess(fields) {
+  return callLogin(Object.assign({ action: "apply" }, fields || {}));
+}
+
+function callRaw(data) {
+  return wx.cloud
+    .callFunction({
+      name: LOGIN_FN,
+      data: data || {},
+    })
+    .then((res) => {
+      const result = (res && res.result) || {};
+      if (!result.success) {
+        throw new Error(result.error || "请求失败");
+      }
+      if (result.data && result.data.openid) setLocalUser(result.data);
+      return result;
+    });
+}
+
+function listUsers() {
+  return callRaw({ action: "listUsers" }).then((result) => result.users || []);
+}
+
+function setUserAccess(userId, accessStatus) {
+  return callRaw({ action: "setUserAccess", userId, accessStatus });
+}
+
+function canUseApp(user) {
+  return !!(user && (user.isAdmin || user.accessStatus === "approved"));
+}
+
 function getDisplayAvatar(user) {
   if (user && (user.avatarFileID || user.avatarUrl)) {
     return user.avatarFileID || user.avatarUrl;
@@ -90,6 +122,10 @@ module.exports = {
   loginUser,
   updateProfile,
   bindPhone,
+  applyAccess,
+  listUsers,
+  setUserAccess,
+  canUseApp,
   getDisplayAvatar,
   getDeviceInfo,
 };

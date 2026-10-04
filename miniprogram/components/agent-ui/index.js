@@ -1441,14 +1441,28 @@ Component({
         this.setData({
           userAvatar: user.avatarFileID || user.avatarUrl || "/components/agent-ui/imgs/wechat.svg",
           userName: user.nickName || "微信用户",
-          userHint: user.needProfile || !user.openid ? "完善资料" : "查看登录信息",
+          userHint: user.isAdmin ? "管理用户权限" : user.needProfile || !user.openid ? "完善资料" : "查看登录信息",
         });
       } catch (e) {}
     },
     goProfile: function () {
       this.closeDrawer();
-      wx.navigateTo({
-        url: "/pages/profile/profile",
+      let user = {};
+      try {
+        const app = getApp();
+        user = (app && app.globalData && app.globalData.userInfo) || wx.getStorageSync("userInfo") || {};
+      } catch (e) {}
+      if (!user.isAdmin) {
+        wx.navigateTo({ url: "/pages/profile/profile" });
+        return;
+      }
+      wx.showActionSheet({
+        itemList: ["用户管理", "个人资料"],
+        success: (res) => {
+          wx.navigateTo({
+            url: res.tapIndex === 0 ? "/pages/admin/admin" : "/pages/profile/profile",
+          });
+        },
       });
     },
     openDrawer: async function () {

@@ -1,4 +1,4 @@
-<view class="chat-page">
+<view class="chat-page" wx:if="{{allowed}}">
   <agent-ui
     id="agent"
     agentConfig="{{agentConfig}}"
@@ -7,4 +7,8 @@
     modelConfig="{{modelConfig}}"
     envShareConfig="{{envShareConfig}}"
   ></agent-ui>
+</view>
+<view class="access-check" wx:else>
+  <text>{{checkError || "正在确认使用权限"}}</text>
+  <view wx:if="{{checkError}}" class="retry" bindtap="retryAccess">重试</view>
 </view>

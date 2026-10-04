@@ -1,8 +1,10 @@
 <view class="page">
   <view class="card user-card">
     <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-      <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" />
-      <view class="avatar-mask">换头像</view>
+      <view class="avatar-clip">
+        <image class="avatar" src="{{avatarUrl}}" mode="aspectFill" />
+        <view class="avatar-mask">换头像</view>
+      </view>
     </button>
     <view class="user-fields">
       <text class="label">微信昵称</text>
@@ -19,7 +21,16 @@
     </view>
   </view>
 
+  <view class="card manage-card" wx:if="{{userInfo.isAdmin}}" bindtap="goAdmin">
+    <text class="manage-title">用户管理</text>
+    <text class="manage-desc">查看头像和昵称，决定谁可以使用</text>
+  </view>
+
   <view class="card">
+    <view class="row">
+      <text class="row-label">使用权限</text>
+      <text class="row-value {{userInfo.isAdmin || userInfo.accessStatus === 'approved' ? 'ok' : 'muted'}}">{{accessText}}</text>
+    </view>
     <view class="row">
       <text class="row-label">登录状态</text>
       <text class="row-value {{userInfo.openid ? 'ok' : 'muted'}}">{{userInfo.openid ? '已识别微信身份' : '未记录'}}</text>
@@ -50,5 +61,5 @@
     </view>
   </view>
 
-  <view class="footer-hint">后台可在云开发数据库 users 集合中查看完整记录。聊天功能不依赖完善资料。</view>
+  <view class="footer-hint">头像和昵称需要你点选后才会保存。未通过审核时不能使用对话。</view>
 </view>

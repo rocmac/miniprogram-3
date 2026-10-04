@@ -23,21 +23,27 @@ page {
 }
 
 .avatar-btn {
-  position: relative;
   width: 136rpx;
   height: 136rpx;
   padding: 0;
   margin: 0;
   border: none;
   background: transparent;
-  border-radius: 50%;
-  overflow: hidden;
   flex-shrink: 0;
   line-height: 1;
+  overflow: visible;
 }
 
 .avatar-btn::after {
-  display: none;
+  border: none;
+}
+
+.avatar-clip {
+  position: relative;
+  width: 136rpx;
+  height: 136rpx;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .avatar {
@@ -146,6 +152,23 @@ page {
 
 .phone-btn::after {
   border: none;
+}
+
+.manage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.manage-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.manage-desc {
+  font-size: 24rpx;
+  color: #8e8ea0;
 }
 
 .footer-hint {

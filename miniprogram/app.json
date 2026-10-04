@@ -1,6 +1,8 @@
 {
   "pages": [
     "pages/chatBot/chatBot",
+    "pages/apply/apply",
+    "pages/admin/admin",
     "pages/profile/profile",
     "pages/index/index",
     "pages/foodBuy/foodBuy"

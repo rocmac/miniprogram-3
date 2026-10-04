@@ -27,6 +27,7 @@ Page({
     lastLoginText: "暂无",
     createdAtText: "暂无",
     deviceText: "暂无",
+    accessText: "等待审核",
   },
 
   onShow() {
@@ -45,7 +46,18 @@ Page({
       lastLoginText: formatTime(info.lastLoginAt),
       createdAtText: formatTime(info.createdAt),
       deviceText: [info.platform, info.model].filter(Boolean).join(" · ") || "暂无",
+      accessText: info.isAdmin
+        ? "管理员"
+        : info.accessStatus === "approved"
+          ? "已允许使用"
+          : info.accessStatus === "rejected"
+            ? "未通过"
+            : "等待审核",
     });
+  },
+
+  goAdmin() {
+    wx.navigateTo({ url: "/pages/admin/admin" });
   },
 
   async refreshProfile() {
